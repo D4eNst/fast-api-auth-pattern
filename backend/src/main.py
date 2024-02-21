@@ -1,6 +1,7 @@
 import fastapi
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 
 from src.api.endpoints import router as api_endpoint_router
 from src.config.events import execute_backend_server_event_handler, terminate_backend_server_event_handler
@@ -27,6 +28,7 @@ def initialize_backend_application() -> fastapi.FastAPI:
         terminate_backend_server_event_handler(backend_app=app),
     )
 
+    app.mount("/static", StaticFiles(directory="static", html=True), name="static")
     app.include_router(router=api_endpoint_router, prefix=settings.API_PREFIX)
 
     return app

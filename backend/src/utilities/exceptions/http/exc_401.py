@@ -31,3 +31,10 @@ async def http_401_exc_expired_token_request() -> Exception:
         status_code=fastapi.status.HTTP_401_UNAUTHORIZED,
         detail=http_401_expired_token_details(),
     )
+
+
+async def http_401_exc_not_enough_permissions() -> Exception:
+    return fastapi.HTTPException(
+        status_code=fastapi.status.HTTP_401_UNAUTHORIZED,
+        detail="Not enough permissions"
+    )

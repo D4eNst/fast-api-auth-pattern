@@ -1,8 +1,12 @@
+from typing import Annotated
+
 import fastapi
 import pydantic
+from fastapi import Security
 
 from src.api.dependencies.auth import get_auth_user
 from src.api.dependencies.repository import get_repository
+from src.models.db.account import Account
 from src.models.schemas.account import AccountInUpdate, AccountDetail
 from src.repository.crud.account import AccountCRUDRepository
 from src.utilities.exceptions.database import EntityDoesNotExist
@@ -13,13 +17,14 @@ from src.utilities.exceptions.http.exc_404 import (
 router = fastapi.APIRouter(prefix="/accounts", tags=["accounts"])
 
 
-@router.get(
+@router.post(
     path="",
     name="accounts:read-accounts",
     response_model=list[AccountDetail],
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_accounts(
+        account: Annotated[Account, Security(get_auth_user, scopes=["read"])],
         account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository)),
 ) -> list[AccountDetail]:
     db_accounts = await account_repo.find_all()
@@ -40,7 +45,7 @@ async def get_accounts(
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_me(
-        account=fastapi.Depends(get_auth_user),
+        account: Annotated[Account, Security(get_auth_user, scopes=["user"])],
 ) -> AccountDetail:
     return AccountDetail.model_validate(account)
 

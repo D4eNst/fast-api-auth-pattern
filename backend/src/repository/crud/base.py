@@ -38,7 +38,7 @@ class BaseCRUDRepository(typing.Generic[T]):
 
         return result.all()
 
-    async def find_by_id_or_none(self, id:int, **filter_by) -> typing.Optional[T]:
+    async def find_by_id_or_none(self, id: int, **filter_by) -> typing.Optional[T]:
         stmt = sqlalchemy.select(self.model).where(self.model.id == id).filter_by(**filter_by)
         query = await self.async_session.execute(statement=stmt)
         result = query.scalar()

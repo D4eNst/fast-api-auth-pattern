@@ -1,13 +1,23 @@
 import datetime
+import enum
 from calendar import timegm
+from typing import Optional
 
 import pydantic
 from jose import jwt as jose_jwt, JWTError, ExpiredSignatureError
 
 from src.config.manager import settings
 from src.models.db.account import Account
-from src.models.schemas.jwt import JWTAccount
-from src.utilities.exceptions.database import EntityDoesNotExist
+from src.models.db.application import Application
+from src.models.schemas.account import AccountScopes
+from src.models.schemas.jwt import SJwtToken
+
+
+class AuthTypes(enum.Enum):
+    PASSWORD_CREDENTIALS_FLOW = "password"
+    AUTHORIZATION_CODE_FLOW = "authorization_code"
+    CLIENT_CREDENTIALS_FLOW = "client_credentials"
+    IMPLICIT_GRANT_FLOW = "implicit_grant"
 
 
 class JWTGenerator:
@@ -16,17 +26,17 @@ class JWTGenerator:
 
     @classmethod
     def _generate_jwt_token(
-        cls,
-        *,
-        jwt_data: dict[str, str | int],
-        expires_delta: datetime.timedelta | None = None,
+            cls,
+            *,
+            jwt_data: dict[str, str | int],
+            expires_delta: datetime.timedelta | None = None,
     ) -> str:
         to_encode = jwt_data.copy()
         issued_at = timegm(datetime.datetime.utcnow().utctimetuple())
         if expires_delta:
             expire = issued_at + expires_delta.seconds
         else:
-            expire = issued_at + datetime.timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRATION_TIME).seconds
+            expire = issued_at + datetime.timedelta(minutes=settings.JWT_TOKEN_EXPIRATION_TIME_MIN).seconds
 
         to_encode.update(
             iat=issued_at,
@@ -35,15 +45,28 @@ class JWTGenerator:
 
         return jose_jwt.encode(to_encode, key=settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
-    def generate_access_token(self, account: Account) -> str:
-        if not account:
-            raise EntityDoesNotExist(f"Cannot generate JWT token for without Account entity!")
+    def generate_access_token(self, entity_obj: object, auth_type: str) -> str:
+        scopes = ["read"]
+        refer: str
+        if auth_type in (AuthTypes.PASSWORD_CREDENTIALS_FLOW.value, AuthTypes.AUTHORIZATION_CODE_FLOW.value):
+            expires_delta = datetime.timedelta(minutes=settings.JWT_TOKEN_EXPIRATION_TIME_MIN)
+        else:
+            expires_delta = datetime.timedelta(minutes=settings.JWT_TOKEN_EXPIRATION_TIME_MAX)
 
-        sub_obj = getattr(account, settings.JWT_SUBJECT)
-        setattr(account, "sub", sub_obj)
+        if isinstance(entity_obj, Account):
+            sub_obj = getattr(entity_obj, "username")
+            scopes.extend(AccountScopes(role=entity_obj.role.value).get_scopes())
+            refer = "user"
+        elif isinstance(entity_obj, Application):
+            sub_obj = getattr(entity_obj, "client_id")
+            refer = "app"
+        else:
+            raise ValueError(f"Cannot generate JWT token with entity type {type(entity_obj)}! "
+                             f"Supported entities are Account or Application!")
+
         return self._generate_jwt_token(
-            jwt_data=JWTAccount.model_validate(account).model_dump(),
-            expires_delta=datetime.timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRATION_TIME),
+            jwt_data=SJwtToken(sub=sub_obj, scopes=" ".join(scopes), refer=refer).model_dump(),
+            expires_delta=expires_delta
         )
 
     @classmethod

@@ -8,9 +8,10 @@ import pydantic
 from src.config.manager import settings
 
 
-class JWTAccount(pydantic.BaseModel):
+class SJwtToken(pydantic.BaseModel):
     sub: str
-    email: pydantic.EmailStr
+    scopes: str = ""
+    refer: str = "app"
 
     class Config:
         from_attributes = True
@@ -42,5 +43,5 @@ class SRefreshSession(pydantic.BaseModel):
 class Tokens(pydantic.BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int = settings.JWT_ACCESS_TOKEN_EXPIRATION_TIME * 60
-    refresh_token: UUID
+    expires_in: int
+    refresh_token: UUID | None

@@ -3,6 +3,7 @@ import enum
 
 import pydantic
 
+from src.models.db.account import RoleNames
 from src.models.schemas.base import BaseSchemaModel
 
 
@@ -33,3 +34,18 @@ class AccountDetail(BaseSchemaModel):
     is_logged_in: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime | None
+
+
+class AccountScopes(BaseSchemaModel):
+    role: str
+
+    _ROLE_RELATIONSHIPS = {
+        RoleNames.STAFF.value: [RoleNames.STAFF.value],
+        RoleNames.DEVELOPER.value: [RoleNames.STAFF.value, RoleNames.DEVELOPER.value],
+        RoleNames.ADMIN.value: [RoleNames.STAFF.value, RoleNames.DEVELOPER.value, RoleNames.ADMIN.value],
+    }
+
+    def get_scopes(self) -> list[str]:
+        scopes = self._ROLE_RELATIONSHIPS.get(self.role, [])
+        scopes.append(self.role)
+        return scopes

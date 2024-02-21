@@ -1,23 +1,54 @@
+import base64
 import datetime
 import uuid
+from typing import Annotated, Optional
 
 import fastapi
 from fastapi import Form
+from fastapi.security import OAuth2PasswordRequestForm, HTTPBasicCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import HTMLResponse
 
-from src.api.dependencies.auth import validate_auth_user
+from src.api.dependencies.auth import get_token_from_password_creds, get_token_from_client_creds
+from src.api.dependencies.auth_utils import OAuth2RequestForm, security
 from src.api.dependencies.repository import get_repository
+from src.api.dependencies.session import get_async_session
+from src.config.manager import settings
 from src.models.db.account import Account
 from src.models.schemas.account import AccountInCreate, AccountDetail
 from src.models.schemas.jwt import Tokens, SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
+from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
-from src.securities.authorizations.jwt import jwt_generator
+from src.securities.authorizations.jwt import jwt_generator, AuthTypes
 from src.utilities.exceptions.database import EntityAlreadyExists
-from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request
+from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request, \
+    http_exc_400_client_credentials_bad_request
 from src.utilities.exceptions.http.exc_401 import http_401_exc_bad_token_request, \
     http_401_exc_expired_token_request
 
 router = fastapi.APIRouter(prefix="/auth", tags=["authentication"])
+
+
+@router.post(
+    "/authorize",
+    name="auth:get-tokens",
+    # response_model=Tokens,
+    status_code=fastapi.status.HTTP_200_OK,
+)
+async def get_tokens(
+        response: fastapi.Response,
+        request: fastapi.Request,
+        client_id: str = "",
+        response_type: str = "",
+        redirect_uri: str = "",
+        state: str = "",
+        scope: str = "",
+        code_challenge_method: str = "",
+        code_challenge: str = "",
+        async_session: AsyncSession = fastapi.Depends(get_async_session)
+):
+    ...
 
 
 @router.post(
@@ -29,37 +60,40 @@ router = fastapi.APIRouter(prefix="/auth", tags=["authentication"])
 async def get_tokens(
         response: fastapi.Response,
         request: fastapi.Request,
-        db_account: Account = fastapi.Depends(validate_auth_user),
-        # fingerprint: str = fastapi.Header(alias="X-Fingerprint"),
-        refresh_session_repo: RefreshCRUDRepository = fastapi.Depends(get_repository(repo_type=RefreshCRUDRepository))
+        authorization: Optional[HTTPBasicCredentials] = fastapi.Depends(security),
+        auth_descr: str = fastapi.Header(default=None, alias="Authorization", description="to add it in OpenAPI, use HTTPBasic"),
+        form_data: OAuth2RequestForm = fastapi.Depends(),
+        async_session: AsyncSession = fastapi.Depends(get_async_session)
 ) -> Tokens:
-    ip = request.client.host
-    user_agent = request.headers.get("User-Agent")
+    account_repo = AccountCRUDRepository(async_session=async_session)
+    refresh_session_repo = RefreshCRUDRepository(async_session=async_session)
+    app_repo = ApplicationCRUDRepository(async_session=async_session)
 
-    current_sessions = await refresh_session_repo.find_all(account=db_account.id)
-    for session in current_sessions:
-        if len(current_sessions) > 5 or session.ua == user_agent:
-            await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
+    client_id_headers, client_secret_headers = None, None
+    client_id_body, client_secret_body = None, None
 
-    access_token = jwt_generator.generate_access_token(account=db_account)
+    if authorization is None or not authorization.username or not authorization.password:
+        client_id_body, client_secret_body = form_data.client_id, form_data.client_secret
+    else:
+        client_id_headers, client_secret_headers = authorization.username, authorization.password
 
-    s_refresh_session = SRefreshSession(
-        account=db_account.id,
-        ua=user_agent,
-        # fingerprint=fingerprint,
-        ip=ip,
-    )
-    refresh_session = await refresh_session_repo.create(s_refresh_session.model_dump())
-    refresh_token = refresh_session.refresh_token
+    if not form_data.grant_type or form_data.grant_type == AuthTypes.PASSWORD_CREDENTIALS_FLOW.value:
+        tokens = await get_token_from_password_creds(
+            request=request,
+            response=response,
+            username=form_data.username,
+            password=form_data.password,
+            client_id=client_id_body,
+            account_repo=account_repo,
+            refresh_session_repo=refresh_session_repo
+        )
+    elif form_data.grant_type == AuthTypes.CLIENT_CREDENTIALS_FLOW.value:
+        tokens = await get_token_from_client_creds(
+            client_id=client_id_headers,
+            client_secret=client_secret_headers,
+            app_repo=app_repo
+        )
 
-    response.set_cookie(
-        "refresh_token",
-        refresh_token,
-        httponly=True,
-        secure=False,  # TODO change in prod
-    )
-
-    tokens = Tokens(access_token=access_token, refresh_token=refresh_token)
     return tokens
 
 
@@ -99,7 +133,10 @@ async def refresh_tokens(
         await refresh_session_repo.delete_by_id(refresh_session.id)
         raise await http_401_exc_bad_token_request()
 
-    new_access_token = jwt_generator.generate_access_token(account=db_account)
+    new_access_token = jwt_generator.generate_access_token(
+        entity_obj=db_account,
+        auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value
+    )
 
     new_s_refresh_session = SRefreshSession(
         account=db_account.id,
@@ -119,7 +156,11 @@ async def refresh_tokens(
         secure=False,  # TODO change in prod
     )
 
-    tokens = Tokens(access_token=new_access_token, refresh_token=new_refresh_token)
+    tokens = Tokens(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN
+    )
     return tokens
 
 
@@ -146,3 +187,13 @@ async def signup(
     new_account = await account_repo.create(data=account_create.model_dump())
 
     return AccountDetail.model_validate(new_account)
+
+
+# Пример пути с использованием шаблона
+@router.get(
+    path="/login",
+    name="auth/login",
+    response_class=HTMLResponse,
+)
+async def login_page(request: fastapi.Request):
+    return templates.TemplateResponse("login.html", {"request": request})

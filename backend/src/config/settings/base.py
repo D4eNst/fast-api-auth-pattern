@@ -44,10 +44,9 @@ class BackendBaseSettings(BaseSettings):
     JWT_TOKEN_PREFIX: str = decouple.config("JWT_TOKEN_PREFIX", cast=str)  # type: ignore
     JWT_SECRET_KEY: str = decouple.config("JWT_SECRET_KEY", cast=str)  # type: ignore
     JWT_SUBJECT: str = decouple.config("JWT_SUBJECT", cast=str)  # type: ignore
-    JWT_MIN: int = decouple.config("JWT_MIN", cast=int)  # type: ignore
-    JWT_HOUR: int = decouple.config("JWT_HOUR", cast=int)  # type: ignore
-    JWT_DAY: int = decouple.config("JWT_DAY", cast=int)  # type: ignore
-    JWT_ACCESS_TOKEN_EXPIRATION_TIME: int = (JWT_MIN) + (JWT_HOUR * 60) * (JWT_DAY * 24 * 60)  # type: ignore
+
+    JWT_TOKEN_EXPIRATION_TIME_MIN: int = decouple.config("JWT_TOKEN_EXPIRATION_TIME_MIN", cast=int)  # type: ignore
+    JWT_TOKEN_EXPIRATION_TIME_MAX: int = decouple.config("JWT_TOKEN_EXPIRATION_TIME_MAX", cast=int)  # type: ignore
     REFRESH_MIN: int = decouple.config("REFRESH_MIN", cast=int)  # type: ignore
     REFRESH_HOUR: int = decouple.config("REFRESH_HOUR", cast=int)  # type: ignore
     REFRESH_DAY: int = decouple.config("REFRESH_DAY", cast=int)  # type: ignore

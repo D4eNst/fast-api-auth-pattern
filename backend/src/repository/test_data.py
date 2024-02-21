@@ -3,8 +3,10 @@ from sqlalchemy import inspect, MetaData, Table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.schemas.account import AccountInCreate
+from src.models.schemas.application import SApplication
 from src.models.schemas.jwt import SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
+from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
 from src.repository.table import Base
 
@@ -47,6 +49,13 @@ async def create_initial_test_data(connection: AsyncConnection) -> None:
         ]
         for refresh_session in refresh_sessions:
             await refresh_session_repo.create(data=refresh_session.model_dump(), commit_changes=False)
+
+        app_repo = ApplicationCRUDRepository(async_session=session)
+        apps = [
+            SApplication(user=1, name="test", website="https://test.com", redirect_uris=["https://test2.com"])
+        ]
+        for app in apps:
+            await app_repo.create(data=app.model_dump(), commit_changes=False)
 
         await account_repo.commit_changes()
         await session.commit()

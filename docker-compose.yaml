@@ -12,8 +12,6 @@ services:
       - PGDATA=/var/lib/postgresql/data/
     volumes:
       - postgresql_db_data:/var/lib/postgresql/data/
-    expose:
-      - 5432
     ports:
       - 5432:5432
 
@@ -27,8 +25,6 @@ services:
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_DB=${POSTGRES_DB}
-    expose:
-      - 8080
     ports:
       - 8080:8080
     depends_on:
@@ -85,6 +81,7 @@ services:
       - 8000:8000
     depends_on:
       - db
+    env
 
 volumes:
   postgresql_db_data:

@@ -6,11 +6,10 @@ from sqlalchemy import UUID, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import functions as sqlalchemy_functions
 
-# from .account import Account
 from src.repository.table import Base
 
 
-class RefreshSession(Base):  # type: ignore
+class RefreshSession(Base):
     __tablename__ = "refresh_session"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement="auto")

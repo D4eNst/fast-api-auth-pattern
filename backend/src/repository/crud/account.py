@@ -15,17 +15,13 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
         super().__init__(async_session)
 
     async def create(self, data: dict, commit_changes: bool = True) -> Account:
-        new_account = Account(
-            username=data['username'],
-            # firstname=data["firstname"],
-            # lastname=data["lastname"],
-            email=data["email"]
-        )
+        password = data.pop("password")
+        new_account = Account(**data)
 
         new_account.set_hash_salt(hash_salt=pwd_generator.generate_salt)
         new_account.set_hashed_password(
             hashed_password=pwd_generator.generate_hashed_password(
-                hash_salt=new_account.hash_salt, new_password=data["password"]
+                hash_salt=new_account.hash_salt, new_password=password
             )
         )
 
@@ -47,6 +43,9 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
 
     async def find_by_username(self, username: str, **filter_by) -> Account:
         return await self.find_by_field(field_name="username", field_value=username, **filter_by)
+
+    async def find_by_username_or_none(self, username: str, **filter_by) -> Account:
+        return await self.find_by_field_or_none(field_name="username", field_value=username, **filter_by)
 
     async def is_email_taken(self, email: str) -> bool:
         email_stmt = sqlalchemy.select(Account.email).select_from(Account).where(Account.email == email)
