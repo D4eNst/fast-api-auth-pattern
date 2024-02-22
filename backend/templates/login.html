@@ -53,15 +53,14 @@
 
                 // Проверяем условие
                 if ({{is_main_app}}) {
-                    sendPostRequest('http://localhost:8000/api/login' + '{{next_url}}', username.value, password.value);
+                // if ("1" === "2") {
+                    sendPostRequest('http://localhost:8000/api/auth/token' + '{{next_url}}', username.value, password.value);
                 } else {
                     // Выводим окно с подтверждением
                     let userConfirmation = confirm('Вы разрешаете приложению {{app}} доступ к вашим данным?');
 
                     if (userConfirmation) {
-                        let formData = new FormData();
-                        console.log(username.value, password.value)
-                        sendPostRequest('http://localhost:8000/api/login' + '{{next_url}}', username.value, password.value);
+                        sendPostRequest('http://localhost:8000/api/auth/token' + '{{next_url}}', username.value, password.value);
                     } else {
                         // Пользователь отменил, выполните необходимые действия
                     }
@@ -75,13 +74,45 @@
                 xhr.open('POST', url, true);
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
-                // Здесь вы можете добавить обработчик события для xhr.onreadystatechange,
-                // чтобы обрабатывать ответ сервера, если это необходимо.
+                 // Добавляем обработчик события для обработки ответа
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        // Обработка ответа в формате JSON
+                        let jsonResponse = JSON.parse(xhr.responseText);
+                        redirectToGetRequest(jsonResponse.access_token);
+
+                        // В этом месте вы можете выполнить дополнительные действия с полученными данными
+                    }
+                };
 
                 // Посылаем запрос
                 var formData = "username=" + encodeURIComponent(username) +
                    "&password=" + encodeURIComponent(password);
                 xhr.send(formData);
+            }
+            // function redirectToGetRequest(accessToken) {
+            //     // Дополнительные действия перед перенаправлением пользователя (если необходимо)
+            //
+            //     // Перенаправление пользователя с использованием access token в заголовке "Authorization"
+            //     window.location.href = "/api/auth/authorize" + "{{next_url}}" + "&access_token=" + accessToken; // Замените на фактический URL
+            // }
+            function redirectToGetRequest(accessToken) {
+                let xhr = new XMLHttpRequest();
+
+
+                let params = "{{next_url}}".replaceAll("amp;", "")
+
+                xhr.open('GET', "/api/auth/authorize" + params, true);
+                xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        let jsonResponse = JSON.parse(xhr.responseText);
+                        window.location.href = jsonResponse.redirect_uri
+                    }
+                };
+
+                xhr.send();
             }
         });
     </script>

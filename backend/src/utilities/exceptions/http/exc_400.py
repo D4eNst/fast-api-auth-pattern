@@ -28,6 +28,13 @@ async def http_exc_400_credentials_bad_signin_request() -> Exception:
     )
 
 
+async def http_exc_400_req_body_bad_signin_request() -> Exception:
+    return fastapi.HTTPException(
+        status_code=fastapi.status.HTTP_400_BAD_REQUEST,
+        detail="Signin failed! Make sure that all data is correct and code has not expired",
+    )
+
+
 async def http_400_exc_bad_username_request(username: str) -> Exception:
     return fastapi.HTTPException(
         status_code=fastapi.status.HTTP_400_BAD_REQUEST,

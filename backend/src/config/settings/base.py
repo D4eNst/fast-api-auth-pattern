@@ -35,6 +35,11 @@ class BackendBaseSettings(BaseSettings):
     DB_TIMEOUT: int = decouple.config("DB_TIMEOUT", cast=int)  # type: ignore
     DB_POSTGRES_USERNAME: str = decouple.config("POSTGRES_USERNAME", cast=str)  # type: ignore
 
+    REDIS_HOST: str = decouple.config("REDIS_HOST", cast=str)  # type: ignore
+    REDIS_PASSWORD: str = decouple.config("REDIS_PASSWORD", cast=str)  # type: ignore
+    REDIS_PORT: int = decouple.config("REDIS_PORT", cast=int)  # type: ignore
+    REDIS_URL: str = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"  # type: ignore
+
     IS_DB_ECHO_LOG: bool = decouple.config("IS_DB_ECHO_LOG", cast=bool)  # type: ignore
     IS_DB_FORCE_ROLLBACK: bool = decouple.config("IS_DB_FORCE_ROLLBACK", cast=bool)  # type: ignore
     IS_DB_EXPIRE_ON_COMMIT: bool = decouple.config("IS_DB_EXPIRE_ON_COMMIT", cast=bool)  # type: ignore
@@ -56,6 +61,7 @@ class BackendBaseSettings(BaseSettings):
 
     IS_ALLOWED_CREDENTIALS: bool = decouple.config("IS_ALLOWED_CREDENTIALS", cast=bool)  # type: ignore
     ALLOWED_ORIGINS: list[str] = [
+        "http://127.0.0.1:8000",  # local origin
         "http://localhost:3000",  # React default port
         "http://0.0.0.0:3000",
         "http://127.0.0.1:3000",  # React docker port

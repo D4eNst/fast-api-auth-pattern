@@ -14,6 +14,6 @@ done
 
 echo "DB Connection --- Successfully Established!"
 # Отладочная информация для проверки содержимого "$@"
-#echo "Executing command: $@"
+echo "Executing command: $@"
 
 exec "$@"

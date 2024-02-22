@@ -1,4 +1,6 @@
 import pydantic
+from redis import asyncio as aioredis
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     AsyncEngine as SQLAlchemyAsyncEngine,
     AsyncSession as SQLAlchemyAsyncSession,
@@ -42,3 +44,4 @@ class AsyncDatabase:
 
 
 async_db: AsyncDatabase = AsyncDatabase()
+redis_client: Redis = aioredis.from_url(url=settings.REDIS_URL)

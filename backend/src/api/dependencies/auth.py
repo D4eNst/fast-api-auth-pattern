@@ -1,3 +1,5 @@
+import json
+
 import fastapi
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
@@ -12,10 +14,11 @@ from src.models.schemas.jwt import SJwtToken, SRefreshSession, Tokens
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
+from src.repository.database import redis_client
 from src.securities.authorizations.jwt import jwt_generator, AuthTypes
 from src.securities.hashing.password import pwd_generator
 from src.utilities.exceptions.http.exc_400 import http_exc_400_credentials_bad_signin_request, \
-    http_exc_400_client_credentials_bad_request
+    http_exc_400_client_credentials_bad_request, http_exc_400_req_body_bad_signin_request
 from src.utilities.exceptions.http.exc_401 import (
     http_401_exc_bad_token_request,
     http_401_exc_expired_token_request,
@@ -33,8 +36,8 @@ async def get_token_from_password_creds(
         account_repo: AccountCRUDRepository,
         refresh_session_repo: RefreshCRUDRepository,
 ):
-    if client_id is None or client_id != settings.CLIENT_ID:
-        raise await http_exc_400_client_credentials_bad_request()
+    # if client_id is None or client_id != settings.CLIENT_ID:
+    #     raise await http_exc_400_client_credentials_bad_request()
 
     ip = request.client.host
     user_agent = request.headers.get("User-Agent")
@@ -58,7 +61,8 @@ async def get_token_from_password_creds(
         if len(current_sessions) > 5 or session.ua == user_agent:
             await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
 
-    access_token = jwt_generator.generate_access_token(entity_obj=db_account, auth_type=AuthTypes.PASSWORD_CREDENTIALS_FLOW.value)
+    access_token = jwt_generator.generate_access_token(entity_obj=db_account,
+                                                       auth_type=AuthTypes.PASSWORD_CREDENTIALS_FLOW.value)
 
     s_refresh_session = SRefreshSession(
         account=db_account.id,
@@ -75,6 +79,7 @@ async def get_token_from_password_creds(
         httponly=True,
         secure=False,  # TODO change in prod
     )
+    response.headers.append("Access-Control-Allow-Origin", "http://127.0.0.1:8000")  # TODO USE SETTINGS
 
     tokens = Tokens(
         access_token=access_token,
@@ -88,7 +93,7 @@ async def get_token_from_client_creds(
         client_id: str | None,
         client_secret: str | None,
         app_repo: ApplicationCRUDRepository,
-):
+) -> Tokens:
     if client_id is None or client_secret is None:
         raise await http_exc_400_client_credentials_bad_request()
 
@@ -105,6 +110,67 @@ async def get_token_from_client_creds(
     return tokens
 
 
+async def get_token_from_auth_code(
+        request: fastapi.Request,
+        client_id: str | None,
+        client_secret: str | None,
+        redirect_uri: str | None,
+        code: str | None,
+        app_repo: ApplicationCRUDRepository,
+        account_repo: AccountCRUDRepository,
+        refresh_session_repo: RefreshCRUDRepository,
+
+) -> Tokens:
+    if client_id is None is None or redirect_uri is None or code is None:
+        raise await http_exc_400_req_body_bad_signin_request()
+
+    app = await app_repo.find_by_client_id_or_none(client_id=client_id)
+    if app is None:
+        raise await http_exc_400_client_credentials_bad_request()
+
+    user_agent = request.headers.get("User-Agent")
+    ip = request.client.host
+
+    async with redis_client.pipeline() as pipeline:
+        await pipeline.get(name=f"code:{code}")
+        await pipeline.delete(f"code:{code}")
+        data_dict_json = (await pipeline.execute())[0]
+
+    if data_dict_json:
+        data_dict = json.loads(data_dict_json)
+        # await redis_client.delete(f"code:{code}")
+    else:
+        raise await http_exc_400_req_body_bad_signin_request()
+
+    if data_dict["code_challenge"] is not None:
+        # TODO FOR Authorization Code with PKCE Flow
+        ...
+    elif client_secret is None or client_secret != app.client_secret:
+        raise await http_exc_400_client_credentials_bad_request()
+
+    if redirect_uri != data_dict["redirect_uri"]:
+        raise await http_exc_400_req_body_bad_signin_request()
+
+    db_account = await account_repo.find_by_id(id=data_dict["user_id"])
+    access_token = jwt_generator.generate_access_token(entity_obj=db_account,
+                                                       auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value)
+
+    s_refresh_session = SRefreshSession(
+        account=db_account.id,
+        ua=user_agent,
+        ip=ip,
+    )
+    refresh_session = await refresh_session_repo.create(s_refresh_session.model_dump())
+    refresh_token = refresh_session.refresh_token
+
+    tokens = Tokens(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60
+    )
+    return tokens
+
+
 async def get_token_payload(
         # token1: str = fastapi.Depends(oauth2_password_scheme),
         token2: str = fastapi.Depends(oauth2_client_scheme),
@@ -116,17 +182,19 @@ async def get_token_payload(
     except ExpiredSignatureError:
         raise await http_401_exc_expired_token_request()
     except Exception:
-        raise await http_401_exc_bad_token_request()
+        return None
 
     return payload
 
 
-async def get_auth_user(
+async def get_auth_user_or_none(
         security_scopes: SecurityScopes,
         payload: dict = fastapi.Depends(get_token_payload),
         account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository)),
         app_repo: ApplicationCRUDRepository = fastapi.Depends(get_repository(repo_type=ApplicationCRUDRepository))
-) -> Account:
+) -> Account | None:
+    if not payload:
+        return None
     token_data = SJwtToken.model_validate(payload)
 
     db_account = None
@@ -135,19 +203,24 @@ async def get_auth_user(
         db_account = await account_repo.find_by_username_or_none(username=username)
     elif token_data.refer == "app":
         app = await app_repo.find_by_client_id_or_none(client_id=token_data.sub)
-        if app is None:
-            raise await http_401_exc_bad_token_request()
-        user_id = app.user
-        db_account = await account_repo.find_by_id(user_id)
+        if app is not None:
+            # raise await http_401_exc_bad_token_request()
+            user_id = app.user
+            db_account = await account_repo.find_by_id(user_id)
 
-    if db_account is None:
-        raise await http_401_exc_bad_token_request()
-
-    for scope in security_scopes.scopes:
-        if scope not in token_data.scopes:
-            raise await http_401_exc_not_enough_permissions()
+    # for scope in security_scopes.scopes:
+    #     if scope not in token_data.scopes:
+    #         raise await http_401_exc_not_enough_permissions()
 
     return db_account
+
+
+async def get_auth_user(
+        account: Account | None = fastapi.Depends(get_auth_user_or_none)
+) -> Account:
+    if account is None:
+        raise await http_401_exc_bad_token_request()
+    return account
 
 # async def get_auth_app(
 #         security_scopes: SecurityScopes,

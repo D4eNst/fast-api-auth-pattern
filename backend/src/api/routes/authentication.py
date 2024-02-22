@@ -1,15 +1,20 @@
-import base64
 import datetime
+import json
+import secrets
 import uuid
-from typing import Annotated, Optional
+from typing import Optional
 
 import fastapi
 from fastapi import Form
-from fastapi.security import OAuth2PasswordRequestForm, HTTPBasicCredentials
+from fastapi.security import HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import HTMLResponse
 
-from src.api.dependencies.auth import get_token_from_password_creds, get_token_from_client_creds
+from src.api.dependencies.auth import (
+    get_token_from_password_creds,
+    get_token_from_client_creds,
+    get_auth_user_or_none,
+    get_token_from_auth_code,
+)
 from src.api.dependencies.auth_utils import OAuth2RequestForm, security
 from src.api.dependencies.repository import get_repository
 from src.api.dependencies.session import get_async_session
@@ -20,23 +25,22 @@ from src.models.schemas.jwt import Tokens, SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
+from src.repository.database import redis_client
 from src.securities.authorizations.jwt import jwt_generator, AuthTypes
 from src.utilities.exceptions.database import EntityAlreadyExists
-from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request, \
-    http_exc_400_client_credentials_bad_request
-from src.utilities.exceptions.http.exc_401 import http_401_exc_bad_token_request, \
-    http_401_exc_expired_token_request
+from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request
+from src.utilities.exceptions.http.exc_401 import http_401_exc_bad_token_request, http_401_exc_expired_token_request
 
 router = fastapi.APIRouter(prefix="/auth", tags=["authentication"])
 
 
-@router.post(
+@router.get(
     "/authorize",
     name="auth:get-tokens",
     # response_model=Tokens,
     status_code=fastapi.status.HTTP_200_OK,
 )
-async def get_tokens(
+async def authorize(
         response: fastapi.Response,
         request: fastapi.Request,
         client_id: str = "",
@@ -44,11 +48,31 @@ async def get_tokens(
         redirect_uri: str = "",
         state: str = "",
         scope: str = "",
-        code_challenge_method: str = "",
-        code_challenge: str = "",
-        async_session: AsyncSession = fastapi.Depends(get_async_session)
+        code_challenge_method: str = None,
+        code_challenge: str = None,
+        user: Account | None = fastapi.Depends(get_auth_user_or_none),
+        app_repo: ApplicationCRUDRepository = fastapi.Depends(get_repository(repo_type=ApplicationCRUDRepository))
 ):
-    ...
+    app = await app_repo.find_by_client_id_or_none(client_id=client_id)
+    if app is None:
+        return "INVALID_CLIENT: Invalid client"
+    if code_challenge_method is not None and code_challenge_method != "S256":
+        return "INVALID_REQUEST: Invalid code challenge method"
+
+    if response_type.lower().strip() == "token":
+        return "Implicit Grant Flow"  # TODO ADD Implicit Grant Flow REALIZATION
+
+    params = "?" + str(request.query_params)
+    if user is None:
+        return fastapi.responses.RedirectResponse(
+            '/api/login' + params,
+            status_code=fastapi.status.HTTP_302_FOUND)
+
+    code = secrets.token_urlsafe(64)
+    data_dict = {'user_id': user.id, 'scope': scope, 'redirect_uri': redirect_uri, "code_challenge": code_challenge}
+    await redis_client.setex(name=f"code:{code}", value=json.dumps(data_dict), time=datetime.timedelta(minutes=5))
+
+    return dict(redirect_uri=f"{redirect_uri}?code={code}&state={state}")
 
 
 @router.post(
@@ -61,7 +85,8 @@ async def get_tokens(
         response: fastapi.Response,
         request: fastapi.Request,
         authorization: Optional[HTTPBasicCredentials] = fastapi.Depends(security),
-        auth_descr: str = fastapi.Header(default=None, alias="Authorization", description="to add it in OpenAPI, use HTTPBasic"),
+        auth_descr: str = fastapi.Header(default=None, alias="Authorization",
+                                         description="to add it in OpenAPI, use HTTPBasic"),
         form_data: OAuth2RequestForm = fastapi.Depends(),
         async_session: AsyncSession = fastapi.Depends(get_async_session)
 ) -> Tokens:
@@ -93,6 +118,19 @@ async def get_tokens(
             client_secret=client_secret_headers,
             app_repo=app_repo
         )
+    elif form_data.grant_type == AuthTypes.AUTHORIZATION_CODE_FLOW.value:
+        tokens = await get_token_from_auth_code(
+            request=request,
+            client_id=client_id_headers,
+            client_secret=client_secret_headers,
+            redirect_uri=form_data.redirect_uri,
+            code=form_data.code,
+            app_repo=app_repo,
+            account_repo=account_repo,
+            refresh_session_repo=refresh_session_repo
+        )
+    else:
+        raise
 
     return tokens
 
@@ -159,7 +197,7 @@ async def refresh_tokens(
     tokens = Tokens(
         access_token=new_access_token,
         refresh_token=new_refresh_token,
-        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60
     )
     return tokens
 
@@ -189,11 +227,11 @@ async def signup(
     return AccountDetail.model_validate(new_account)
 
 
-# Пример пути с использованием шаблона
-@router.get(
-    path="/login",
-    name="auth/login",
-    response_class=HTMLResponse,
-)
-async def login_page(request: fastapi.Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+# # Пример пути с использованием шаблона
+# @router.get(
+#     path="/login",
+#     name="auth/login",
+#     response_class=HTMLResponse,
+# )
+# async def login_page(request: fastapi.Request):
+#     return templates.TemplateResponse("login.html", {"request": request})

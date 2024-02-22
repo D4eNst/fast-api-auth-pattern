@@ -19,16 +19,28 @@ services:
     image: adminer
     container_name: db_editor
     restart: always
-    environment:
-      - POSTGRES_USER=${POSTGRES_USERNAME}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_DB=${POSTGRES_DB}
+    env_file:
+      - .env
     ports:
       - 8080:8080
     depends_on:
       - db
+
+  redis:
+    image: redis
+    container_name: redis
+    volumes:
+      - redis_data:/data
+    env_file:
+      - .env
+    expose:
+      - 6379
+    ports:
+      - "6379:6379"
+    sysctls:
+      - net.core.somaxconn=1024
+    command:
+      redis-server --bind 0.0.0.0 --requirepass ${REDIS_PASSWORD}
 
   backend_app:
     container_name: backend_app
@@ -36,43 +48,6 @@ services:
     build:
       dockerfile: Dockerfile
       context: ./backend/
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - DEBUG=${DEBUG}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_SCHEMA=${POSTGRES_SCHEMA}
-      - POSTGRES_USERNAME=${POSTGRES_USERNAME}
-      - BACKEND_SERVER_HOST=${BACKEND_SERVER_HOST}
-      - BACKEND_SERVER_PORT=${BACKEND_SERVER_PORT}
-      - BACKEND_SERVER_WORKERS=${BACKEND_SERVER_WORKERS}
-      - DB_TIMEOUT=${DB_TIMEOUT}
-      - DB_POOL_SIZE=${DB_POOL_SIZE}
-      - DB_MAX_POOL_CON=${DB_MAX_POOL_CON}
-      - DB_POOL_OVERFLOW=${DB_POOL_OVERFLOW}
-      - IS_DB_ECHO_LOG=${IS_DB_ECHO_LOG}
-      - IS_DB_EXPIRE_ON_COMMIT=${IS_DB_EXPIRE_ON_COMMIT}
-      - IS_DB_FORCE_ROLLBACK=${IS_DB_FORCE_ROLLBACK}
-      - IS_ALLOWED_CREDENTIALS=${IS_ALLOWED_CREDENTIALS}
-      - API_TOKEN=${API_TOKEN}
-      - AUTH_TOKEN=${AUTH_TOKEN}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_SUBJECT=${JWT_SUBJECT}
-      - JWT_TOKEN_PREFIX=${JWT_TOKEN_PREFIX}
-      - JWT_ALGORITHM=${JWT_ALGORITHM}
-      - JWT_MIN=${JWT_MIN}
-      - JWT_HOUR=${JWT_HOUR}
-      - JWT_DAY=${JWT_DAY}
-      - REFRESH_MIN=${REFRESH_MIN}
-      - REFRESH_HOUR=${REFRESH_HOUR}
-      - REFRESH_DAY=${REFRESH_DAY}
-      - CLIENT_ID=${CLIENT_ID}
-      - CLIENT_SECRET=${CLIENT_SECRET}
-      - HASHING_ALGORITHM_LAYER_1=${HASHING_ALGORITHM_LAYER_1}
-      - HASHING_ALGORITHM_LAYER_2=${HASHING_ALGORITHM_LAYER_2}
-      - HASHING_SALT=${HASHING_SALT}
     volumes:
       - ./backend/:/usr/backend/
     expose:
@@ -81,7 +56,10 @@ services:
       - 8000:8000
     depends_on:
       - db
-    env
+      - redis
+    env_file:
+      - .env
 
 volumes:
   postgresql_db_data:
+  redis_data:
