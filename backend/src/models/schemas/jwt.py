@@ -4,6 +4,7 @@ from calendar import timegm
 from uuid import UUID
 
 import pydantic
+from pydantic import Field
 
 from src.config.manager import settings
 
@@ -16,27 +17,26 @@ class SJwtToken(pydantic.BaseModel):
         from_attributes = True
 
 
-class SRefreshToken(pydantic.BaseModel):
-    refresh_token: uuid.UUID
-    grant_type: str = "refresh_token"
+def exp_in_func():
+    now = timegm(datetime.datetime.utcnow().utctimetuple())
+    expires_in = datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRATION_TIME).seconds
+    return now + expires_in
 
 
 class SRefreshSession(pydantic.BaseModel):
     account: int
     ua: str
     ip: str
-    expires_in: int = None
-    refresh_token: uuid.UUID = None
-    # fingerprint: str
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if self.expires_in is None:
-            now = timegm(datetime.datetime.utcnow().utctimetuple())
-            expires_in = datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRATION_TIME).seconds
-            self.expires_in = now + expires_in
-        if self.refresh_token is None:
-            self.refresh_token = uuid.uuid4()
+    scope: str = ""
+    expires_in: int = Field(default_factory=exp_in_func)
+    refresh_token: uuid.UUID = Field(default_factory=uuid.uuid4)
+    #
+    # def __init__(self, **data):
+    #     super().__init__(**data)
+    #     if self.expires_in is None:
+    #         ...
+    #     if self.refresh_token is None:
+    #         self.refresh_token = uuid.uuid4()
 
 
 class Tokens(pydantic.BaseModel):

@@ -1,4 +1,4 @@
-from typing import List
+from typing import Optional
 
 from src.models.db.account import RoleNames
 
@@ -7,6 +7,7 @@ class AccountScopes:
     """
     Scopes class for roles
     """
+
     def __init__(self, role: str):
         self.role = role
 
@@ -22,6 +23,9 @@ class AccountScopes:
         scopes.append(self.role)
         return scopes
 
+    @property
+    def in_strings(self) -> str:
+        return " ".join(self.scopes)
 
 
 class ScopeType:
@@ -85,7 +89,7 @@ class Scopes:
                 if isinstance(scope, ScopeInfo)]
 
     @classmethod
-    def scopes(cls, scope_type: ScopeType) -> list[str]:
+    def scopes_type(cls, scope_type: ScopeType) -> list[str]:
         return [scope.scope_str
                 for scope in vars(cls).values()
                 if isinstance(scope, ScopeInfo) and scope.type == scope_type]
@@ -95,3 +99,9 @@ class Scopes:
         return [scope_type
                 for scope_type in vars(cls).values()
                 if isinstance(scope_type, ScopeType)]
+
+    @classmethod
+    def in_string(cls, scope_type: Optional[ScopeType] = None) -> str:
+        if scope_type is not None:
+            return " ".join(cls.scopes_type(scope_type))
+        return " ".join(cls.all_scopes_strings())

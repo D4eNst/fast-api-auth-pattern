@@ -46,7 +46,7 @@ async def get_accounts(
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_me(
-        account: Annotated[Account, Security(get_auth_user, scopes=Scopes.scopes(Scopes.VIEW_ACCOUNT_DETAILS))],
+        account: Annotated[Account, Security(get_auth_user, scopes=Scopes.scopes_type(Scopes.VIEW_ACCOUNT_DETAILS))],
 ) -> AccountDetail:
     return AccountDetail.model_validate(account)
 

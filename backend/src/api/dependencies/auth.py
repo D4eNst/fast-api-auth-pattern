@@ -73,6 +73,7 @@ async def get_token_from_password_creds(
         account=db_account.id,
         ua=user_agent,
         ip=ip,
+        scope=Scopes.in_string(),
     )
     refresh_session = await refresh_session_repo.create(s_refresh_session.model_dump())
     refresh_token = refresh_session.refresh_token
@@ -163,6 +164,11 @@ async def get_token_from_auth_code(
         raise await http_exc_400_req_body_bad_signin_request()
 
     db_account = await account_repo.find_by_id(id=data_dict["user_id"])
+    current_sessions = await refresh_session_repo.find_all(account=db_account.id)
+    for session in current_sessions:
+        if len(current_sessions) > 5 or session.ua == user_agent:
+            await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
+
     access_token = jwt_generator.generate_access_token(
         sub=db_account,
         auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value,
@@ -173,6 +179,7 @@ async def get_token_from_auth_code(
         account=db_account.id,
         ua=user_agent,
         ip=ip,
+        scope=scope
     )
     refresh_session = await refresh_session_repo.create(s_refresh_session.model_dump())
     refresh_token = refresh_session.refresh_token

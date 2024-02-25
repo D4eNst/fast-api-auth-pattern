@@ -198,20 +198,19 @@ async def refresh_tokens(
         await refresh_session_repo.delete_by_id(refresh_session.id)
         raise await http_401_exc_bad_token_request()
 
-    # scope = refresh_session.scope  # TODO ADD SCOPES TO REFRESH SESSION
-    scope = list()
+    scope: str = refresh_session.scope
 
     new_access_token = jwt_generator.generate_access_token(
         db_account,
         AuthTypes.AUTHORIZATION_CODE_FLOW.value,
-        scope
+        scope.split()
     )
 
     new_s_refresh_session = SRefreshSession(
         account=db_account.id,
         ua=user_agent,
-        # fingerprint=fingerprint,
         ip=refresh_session.ip,
+        scope=scope
     )
     await refresh_session_repo.delete_by_id(id=refresh_session.id, commit_changes=False)
 

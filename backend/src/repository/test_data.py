@@ -1,14 +1,22 @@
 import loguru
 from sqlalchemy import inspect, MetaData, Table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy.sql.functions import user
 
+from src.models.db.application import ApplicationUser
 from src.models.schemas.account import AccountInCreate
-from src.models.schemas.application import SApplication
+from src.models.schemas.application import SApplication, SApplicationUser
 from src.models.schemas.jwt import SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
 from src.repository.table import Base
+
+
+async def delete_tables(connection: AsyncConnection):
+    alembic_version_table = Table('alembic_version', MetaData())
+    tables_to_drop = [table for table in Base.metadata.tables.values() if table is not alembic_version_table]
+    await connection.run_sync(Base.metadata.drop_all, tables=tables_to_drop)
 
 
 async def update_bd_in_change(connection: AsyncConnection):
@@ -18,9 +26,7 @@ async def update_bd_in_change(connection: AsyncConnection):
     if set(Base.metadata.tables.keys()).issubset(existing_tables):
         loguru.logger.info("Database Tables already exist. Skipping creation.")
     else:
-        alembic_version_table = Table('alembic_version', MetaData())
-        tables_to_drop = [table for table in Base.metadata.tables.values() if table is not alembic_version_table]
-        await connection.run_sync(Base.metadata.drop_all, tables=tables_to_drop)
+        await delete_tables(connection)
         await connection.run_sync(Base.metadata.create_all)
 
         await create_initial_test_data(connection)
@@ -52,10 +58,12 @@ async def create_initial_test_data(connection: AsyncConnection) -> None:
 
         app_repo = ApplicationCRUDRepository(async_session=session)
         apps = [
-            SApplication(user=1, name="test", website="https://test.com", redirect_uris=["https://test2.com"])
+            SApplication(user=1, name="test", website="http://localhost:8000",
+                         redirect_uris=["https://oauth.pstmn.io/v1/callback"])
         ]
         for app in apps:
-            await app_repo.create(data=app.model_dump(), commit_changes=False)
+            application = await app_repo.create(data=app.model_dump(), commit_changes=False)
+            application.allowed_users.append(ApplicationUser(application_id=application.id, fullname="fullname", email="user@example.com"))
 
         await account_repo.commit_changes()
         await session.commit()
