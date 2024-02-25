@@ -1,13 +1,14 @@
+import base64
+import hashlib
 import json
 
 import fastapi
-from fastapi import HTTPException
 from fastapi.security import SecurityScopes
 from jose import ExpiredSignatureError
 
-from src.api.dependencies.auth_utils import oauth2_password_scheme, oauth2_client_scheme, oauth2_code_scheme
+from src.api.dependencies.auth_utils import oauth2_client_scheme, oauth2_code_scheme
 from src.api.dependencies.repository import get_repository
-from src.api.dependencies.session import get_async_session
+from src.api.dependencies.scopes import Scopes
 from src.config.manager import settings
 from src.models.db.account import Account
 from src.models.schemas.jwt import SJwtToken, SRefreshSession, Tokens
@@ -23,6 +24,7 @@ from src.utilities.exceptions.http.exc_401 import (
     http_401_exc_bad_token_request,
     http_401_exc_expired_token_request,
     http_401_exc_not_enough_permissions,
+    http_exc_401_unauthorized_request,
 )
 from src.utilities.exceptions.http.exc_403 import http_403_forbidden_inactive_user
 
@@ -61,13 +63,15 @@ async def get_token_from_password_creds(
         if len(current_sessions) > 5 or session.ua == user_agent:
             await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
 
-    access_token = jwt_generator.generate_access_token(entity_obj=db_account,
-                                                       auth_type=AuthTypes.PASSWORD_CREDENTIALS_FLOW.value)
+    access_token = jwt_generator.generate_access_token(
+        db_account,
+        AuthTypes.PASSWORD_CREDENTIALS_FLOW.value,
+        Scopes.all_scopes_strings()
+    )
 
     s_refresh_session = SRefreshSession(
         account=db_account.id,
         ua=user_agent,
-        # fingerprint=fingerprint,
         ip=ip,
     )
     refresh_session = await refresh_session_repo.create(s_refresh_session.model_dump())
@@ -79,12 +83,13 @@ async def get_token_from_password_creds(
         httponly=True,
         secure=False,  # TODO change in prod
     )
-    response.headers.append("Access-Control-Allow-Origin", "http://127.0.0.1:8000")  # TODO USE SETTINGS
+    response.headers.append("Access-Control-Allow-Origin", settings.ALLOWED_ORIGINS[0])
 
     tokens = Tokens(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60,
+        scope=" ".join(Scopes.all_scopes_strings())
     )
     return tokens
 
@@ -93,6 +98,7 @@ async def get_token_from_client_creds(
         client_id: str | None,
         client_secret: str | None,
         app_repo: ApplicationCRUDRepository,
+        account_repo: AccountCRUDRepository,
 ) -> Tokens:
     if client_id is None or client_secret is None:
         raise await http_exc_400_client_credentials_bad_request()
@@ -100,12 +106,14 @@ async def get_token_from_client_creds(
     app = await app_repo.find_by_client_id_or_none(client_id=client_id)
     if app is None or app.client_secret != client_secret:
         raise await http_exc_400_client_credentials_bad_request()
+    user = await account_repo.find_by_id(app.user)
 
-    access_token = jwt_generator.generate_access_token(app, AuthTypes.CLIENT_CREDENTIALS_FLOW.value)
+    access_token = jwt_generator.generate_access_token(user, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, list())
     tokens = Tokens(
         access_token=access_token,
         refresh_token=None,
-        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MAX * 60
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MAX * 60,
+        scope=None
     )
     return tokens
 
@@ -119,7 +127,7 @@ async def get_token_from_auth_code(
         app_repo: ApplicationCRUDRepository,
         account_repo: AccountCRUDRepository,
         refresh_session_repo: RefreshCRUDRepository,
-
+        code_verifier: str = ""
 ) -> Tokens:
     if client_id is None is None or redirect_uri is None or code is None:
         raise await http_exc_400_req_body_bad_signin_request()
@@ -138,13 +146,16 @@ async def get_token_from_auth_code(
 
     if data_dict_json:
         data_dict = json.loads(data_dict_json)
-        # await redis_client.delete(f"code:{code}")
     else:
         raise await http_exc_400_req_body_bad_signin_request()
 
+    scope = data_dict["scope"]
+
     if data_dict["code_challenge"] is not None:
-        # TODO FOR Authorization Code with PKCE Flow
-        ...
+        hashed_code_verifier = hashlib.sha256(code_verifier.encode()).digest()
+        encoded_hashed_code_verifier = base64.urlsafe_b64encode(hashed_code_verifier).rstrip(b'=').decode()
+        if not code_verifier or encoded_hashed_code_verifier != data_dict["code_challenge"]:
+            raise await http_exc_400_req_body_bad_signin_request()
     elif client_secret is None or client_secret != app.client_secret:
         raise await http_exc_400_client_credentials_bad_request()
 
@@ -152,8 +163,11 @@ async def get_token_from_auth_code(
         raise await http_exc_400_req_body_bad_signin_request()
 
     db_account = await account_repo.find_by_id(id=data_dict["user_id"])
-    access_token = jwt_generator.generate_access_token(entity_obj=db_account,
-                                                       auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value)
+    access_token = jwt_generator.generate_access_token(
+        sub=db_account,
+        auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value,
+        scopes=scope.split()
+    )
 
     s_refresh_session = SRefreshSession(
         account=db_account.id,
@@ -166,7 +180,31 @@ async def get_token_from_auth_code(
     tokens = Tokens(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60,
+        scope=scope
+    )
+    return tokens
+
+
+async def get_token_from_account(
+        client_id: str | None,
+        account: Account,
+        scope: str,
+        app_repo: ApplicationCRUDRepository,
+) -> Tokens:
+    if not client_id:
+        raise await http_exc_400_client_credentials_bad_request()
+
+    app = await app_repo.find_by_client_id_or_none(client_id=client_id)
+    if app is None:
+        raise await http_exc_400_client_credentials_bad_request()
+
+    access_token = jwt_generator.generate_access_token(account, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, scope.split())
+    tokens = Tokens(
+        access_token=access_token,
+        refresh_token=None,
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MAX * 60,
+        scope=None
     )
     return tokens
 
@@ -177,11 +215,14 @@ async def get_token_payload(
         token3: str = fastapi.Depends(oauth2_code_scheme),
         # token: str,
 ):
+    if token2 is None:
+        raise await http_exc_401_unauthorized_request()
     try:
         payload = jwt_generator.retrieve_data_from_token(token3)
     except ExpiredSignatureError:
         raise await http_401_exc_expired_token_request()
-    except Exception:
+    except Exception as e:
+        print(e)
         return None
 
     return payload
@@ -190,27 +231,17 @@ async def get_token_payload(
 async def get_auth_user_or_none(
         security_scopes: SecurityScopes,
         payload: dict = fastapi.Depends(get_token_payload),
-        account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository)),
-        app_repo: ApplicationCRUDRepository = fastapi.Depends(get_repository(repo_type=ApplicationCRUDRepository))
+        account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository))
 ) -> Account | None:
     if not payload:
         return None
     token_data = SJwtToken.model_validate(payload)
+    username = token_data.sub
+    db_account = await account_repo.find_by_username_or_none(username=username)
 
-    db_account = None
-    if token_data.refer == "user":
-        username = token_data.sub
-        db_account = await account_repo.find_by_username_or_none(username=username)
-    elif token_data.refer == "app":
-        app = await app_repo.find_by_client_id_or_none(client_id=token_data.sub)
-        if app is not None:
-            # raise await http_401_exc_bad_token_request()
-            user_id = app.user
-            db_account = await account_repo.find_by_id(user_id)
-
-    # for scope in security_scopes.scopes:
-    #     if scope not in token_data.scopes:
-    #         raise await http_401_exc_not_enough_permissions()
+    for scope in security_scopes.scopes:
+        if scope not in token_data.scopes:
+            raise await http_401_exc_not_enough_permissions()
 
     return db_account
 
@@ -221,10 +252,3 @@ async def get_auth_user(
     if account is None:
         raise await http_401_exc_bad_token_request()
     return account
-
-# async def get_auth_app(
-#         security_scopes: SecurityScopes,
-#         payload: dict = fastapi.Depends(get_token_payload),
-#         account_repo: ApplicationCRUDRepository = fastapi.Depends(get_repository(repo_type=ApplicationCRUDRepository))
-# ) -> Application:
-#     token_data = SJwtToken.model_validate(payload)

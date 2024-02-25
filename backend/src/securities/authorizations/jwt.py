@@ -1,15 +1,16 @@
 import datetime
 import enum
 from calendar import timegm
-from typing import Optional
+from typing import Optional, Union
 
 import pydantic
 from jose import jwt as jose_jwt, JWTError, ExpiredSignatureError
 
+from src.api.dependencies.scopes import AccountScopes
 from src.config.manager import settings
 from src.models.db.account import Account
 from src.models.db.application import Application
-from src.models.schemas.account import AccountScopes
+
 from src.models.schemas.jwt import SJwtToken
 
 
@@ -45,27 +46,19 @@ class JWTGenerator:
 
         return jose_jwt.encode(to_encode, key=settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
-    def generate_access_token(self, entity_obj: object, auth_type: str) -> str:
-        scopes = ["read"]
-        refer: str
+    def generate_access_token(self, sub: Account, auth_type: str, scopes: list) -> str:
         if auth_type in (AuthTypes.PASSWORD_CREDENTIALS_FLOW.value, AuthTypes.AUTHORIZATION_CODE_FLOW.value):
             expires_delta = datetime.timedelta(minutes=settings.JWT_TOKEN_EXPIRATION_TIME_MIN)
         else:
             expires_delta = datetime.timedelta(minutes=settings.JWT_TOKEN_EXPIRATION_TIME_MAX)
 
-        if isinstance(entity_obj, Account):
-            sub_obj = getattr(entity_obj, "username")
-            scopes.extend(AccountScopes(role=entity_obj.role.value).get_scopes())
-            refer = "user"
-        elif isinstance(entity_obj, Application):
-            sub_obj = getattr(entity_obj, "client_id")
-            refer = "app"
+        if hasattr(sub, settings.JWT_SUBJECT):
+            sub_obj = getattr(sub, settings.JWT_SUBJECT)
         else:
-            raise ValueError(f"Cannot generate JWT token with entity type {type(entity_obj)}! "
-                             f"Supported entities are Account or Application!")
+            raise KeyError(f"{settings.JWT_SUBJECT} not found in {sub}")
 
         return self._generate_jwt_token(
-            jwt_data=SJwtToken(sub=sub_obj, scopes=" ".join(scopes), refer=refer).model_dump(),
+            jwt_data=SJwtToken(sub=sub_obj, scopes=scopes).model_dump(),
             expires_delta=expires_delta
         )
 

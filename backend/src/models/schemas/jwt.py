@@ -10,8 +10,7 @@ from src.config.manager import settings
 
 class SJwtToken(pydantic.BaseModel):
     sub: str
-    scopes: str = ""
-    refer: str = "app"
+    scopes: list
 
     class Config:
         from_attributes = True
@@ -45,3 +44,4 @@ class Tokens(pydantic.BaseModel):
     token_type: str = "bearer"
     expires_in: int
     refresh_token: UUID | None
+    scope: str | None

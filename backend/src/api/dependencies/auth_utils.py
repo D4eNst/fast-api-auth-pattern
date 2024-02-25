@@ -9,6 +9,8 @@ from fastapi.security.utils import get_authorization_scheme_param
 from starlette.requests import Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
+from src.api.dependencies.scopes import Scopes
+
 
 class OAuth2RequestForm:
     def __init__(
@@ -21,7 +23,7 @@ class OAuth2RequestForm:
             client_secret: Annotated[Union[str, None], Form()] = None,
             code: Annotated[Union[str, None], Form()] = None,
             redirect_uri: Annotated[Union[str, None], Form()] = None,
-            code_verifier: Annotated[Union[str, None], Form()] = None,
+            code_verifier: Annotated[str, Form()] = "",
             scope: Annotated[str, Form()] = "",
 
     ):
@@ -70,14 +72,14 @@ security = HTTPBasic(scheme_name="client_credentials", description="You can spec
 
 oauth2_password_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/auth/token/",
-    scopes={"read": "Read publicly available information", "user": "Permissions available to the user"}
+    scopes={}
 )
 
 oauth2_code_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl="/api/auth/authorize",
     tokenUrl="/api/auth/token",
     refreshUrl="/refresh",
-    scopes={"read": "Read publicly available information", "user": "Permissions available to the user"},
+    scopes={scope.scope_str: scope.detail for scope in Scopes.all_scopes()},
     auto_error=False,
 )
 

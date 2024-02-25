@@ -6,6 +6,7 @@ from fastapi import Security
 
 from src.api.dependencies.auth import get_auth_user
 from src.api.dependencies.repository import get_repository
+from src.api.dependencies.scopes import Scopes
 from src.models.db.account import Account
 from src.models.schemas.account import AccountInUpdate, AccountDetail
 from src.repository.crud.account import AccountCRUDRepository
@@ -24,7 +25,7 @@ router = fastapi.APIRouter(prefix="/accounts", tags=["accounts"])
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_accounts(
-        account: Annotated[Account, Security(get_auth_user, scopes=["read"])],
+        account: Annotated[Account, Security(get_auth_user, scopes=[])],
         account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository)),
 ) -> list[AccountDetail]:
     db_accounts = await account_repo.find_all()
@@ -45,7 +46,7 @@ async def get_accounts(
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_me(
-        account: Annotated[Account, Security(get_auth_user, scopes=["user"])],
+        account: Annotated[Account, Security(get_auth_user, scopes=Scopes.scopes(Scopes.VIEW_ACCOUNT_DETAILS))],
 ) -> AccountDetail:
     return AccountDetail.model_validate(account)
 

@@ -6,20 +6,20 @@ from typing import Optional
 
 import fastapi
 from fastapi import Form
-from fastapi.security import HTTPBasicCredentials
+from fastapi.security import HTTPBasicCredentials, SecurityScopes
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies.auth import (
     get_token_from_password_creds,
     get_token_from_client_creds,
     get_auth_user_or_none,
-    get_token_from_auth_code,
+    get_token_from_auth_code, get_token_payload, get_token_from_account,
 )
 from src.api.dependencies.auth_utils import OAuth2RequestForm, security
 from src.api.dependencies.repository import get_repository
+from src.api.dependencies.scopes import Scopes
 from src.api.dependencies.session import get_async_session
 from src.config.manager import settings
-from src.models.db.account import Account
 from src.models.schemas.account import AccountInCreate, AccountDetail
 from src.models.schemas.jwt import Tokens, SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
@@ -41,7 +41,6 @@ router = fastapi.APIRouter(prefix="/auth", tags=["authentication"])
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def authorize(
-        response: fastapi.Response,
         request: fastapi.Request,
         client_id: str = "",
         response_type: str = "",
@@ -50,29 +49,53 @@ async def authorize(
         scope: str = "",
         code_challenge_method: str = None,
         code_challenge: str = None,
-        user: Account | None = fastapi.Depends(get_auth_user_or_none),
+        account_repo: AccountCRUDRepository = fastapi.Depends(get_repository(repo_type=AccountCRUDRepository)),
         app_repo: ApplicationCRUDRepository = fastapi.Depends(get_repository(repo_type=ApplicationCRUDRepository))
 ):
     app = await app_repo.find_by_client_id_or_none(client_id=client_id)
-    if app is None:
+    if app is None and client_id != settings.CLIENT_ID:
         return "INVALID_CLIENT: Invalid client"
     if code_challenge_method is not None and code_challenge_method != "S256":
-        return "INVALID_REQUEST: Invalid code challenge method"
-
-    if response_type.lower().strip() == "token":
-        return "Implicit Grant Flow"  # TODO ADD Implicit Grant Flow REALIZATION
+        return "INVALID_CLIENT: Invalid code challenge method"
+    if scope:
+        for sc in scope.split(" "):
+            if sc not in Scopes.all_scopes_strings():
+                return "INVALID_CLIENT: Scope invalid"
+    if redirect_uri not in app.redirect_uris:
+        return "INVALID_CLIENT: Invalid redirect_uri"
 
     params = "?" + str(request.query_params)
+
+    access_token = request.cookies.pop('access_token', '')
+    user = await get_auth_user_or_none(
+        security_scopes=SecurityScopes(),
+        account_repo=account_repo,
+        payload=await get_token_payload(
+            access_token, access_token
+        )
+    )
     if user is None:
         return fastapi.responses.RedirectResponse(
             '/api/login' + params,
             status_code=fastapi.status.HTTP_302_FOUND)
 
+    if response_type.lower().strip() == "token":
+        tokens = await get_token_from_account(client_id=client_id, account=user, scope=scope, app_repo=app_repo)
+        return fastapi.responses.RedirectResponse(
+            f"{redirect_uri}?access_token={tokens.access_token}&"
+            f"token_type=Bearer&"
+            f"expires_in={tokens.expires_in}&"
+            f"state={state}",
+            status_code=fastapi.status.HTTP_302_FOUND)
+
     code = secrets.token_urlsafe(64)
+
     data_dict = {'user_id': user.id, 'scope': scope, 'redirect_uri': redirect_uri, "code_challenge": code_challenge}
     await redis_client.setex(name=f"code:{code}", value=json.dumps(data_dict), time=datetime.timedelta(minutes=5))
 
-    return dict(redirect_uri=f"{redirect_uri}?code={code}&state={state}")
+    return fastapi.responses.RedirectResponse(
+        f"{redirect_uri}?code={code}&state={state}",
+        status_code=fastapi.status.HTTP_302_FOUND)
 
 
 @router.post(
@@ -80,13 +103,13 @@ async def authorize(
     name="auth:get-tokens",
     response_model=Tokens,
     status_code=fastapi.status.HTTP_200_OK,
+    response_model_exclude_none=True,
 )
 async def get_tokens(
         response: fastapi.Response,
         request: fastapi.Request,
         authorization: Optional[HTTPBasicCredentials] = fastapi.Depends(security),
-        auth_descr: str = fastapi.Header(default=None, alias="Authorization",
-                                         description="to add it in OpenAPI, use HTTPBasic"),
+        auth_descr: str = fastapi.Header(default=None, alias="Authorization", description="to add it in OpenAPI, use HTTPBasic"),
         form_data: OAuth2RequestForm = fastapi.Depends(),
         async_session: AsyncSession = fastapi.Depends(get_async_session)
 ) -> Tokens:
@@ -116,15 +139,19 @@ async def get_tokens(
         tokens = await get_token_from_client_creds(
             client_id=client_id_headers,
             client_secret=client_secret_headers,
-            app_repo=app_repo
+            app_repo=app_repo,
+            account_repo=account_repo
         )
     elif form_data.grant_type == AuthTypes.AUTHORIZATION_CODE_FLOW.value:
+        client_id_for_code = client_id_headers if not form_data.code_verifier else client_id_body
+
         tokens = await get_token_from_auth_code(
             request=request,
-            client_id=client_id_headers,
+            client_id=client_id_for_code,
             client_secret=client_secret_headers,
             redirect_uri=form_data.redirect_uri,
             code=form_data.code,
+            code_verifier=form_data.code_verifier,
             app_repo=app_repo,
             account_repo=account_repo,
             refresh_session_repo=refresh_session_repo
@@ -171,9 +198,13 @@ async def refresh_tokens(
         await refresh_session_repo.delete_by_id(refresh_session.id)
         raise await http_401_exc_bad_token_request()
 
+    # scope = refresh_session.scope  # TODO ADD SCOPES TO REFRESH SESSION
+    scope = list()
+
     new_access_token = jwt_generator.generate_access_token(
-        entity_obj=db_account,
-        auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value
+        db_account,
+        AuthTypes.AUTHORIZATION_CODE_FLOW.value,
+        scope
     )
 
     new_s_refresh_session = SRefreshSession(
@@ -197,7 +228,8 @@ async def refresh_tokens(
     tokens = Tokens(
         access_token=new_access_token,
         refresh_token=new_refresh_token,
-        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60
+        expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60,
+        scope=scope
     )
     return tokens
 
