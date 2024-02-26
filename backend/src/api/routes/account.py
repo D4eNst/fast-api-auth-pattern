@@ -18,7 +18,7 @@ from src.utilities.exceptions.http.exc_404 import (
 router = fastapi.APIRouter(prefix="/accounts", tags=["accounts"])
 
 
-@router.post(
+@router.get(
     path="",
     name="accounts:read-accounts",
     response_model=list[AccountDetail],
@@ -46,7 +46,7 @@ async def get_accounts(
     status_code=fastapi.status.HTTP_200_OK,
 )
 async def get_me(
-        account: Annotated[Account, Security(get_auth_user, scopes=Scopes.scopes_type(Scopes.VIEW_ACCOUNT_DETAILS))],
+        account: Annotated[Account, Security(get_auth_user, scopes=Scopes.get_scopes_strings(Scopes.VIEW_ACCOUNT_DETAILS))],
 ) -> AccountDetail:
     return AccountDetail.model_validate(account)
 

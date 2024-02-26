@@ -21,7 +21,7 @@ async def http_404_exc_email_not_found_request(email: str) -> Exception:
 async def http_404_exc_id_not_found_request(id: int) -> Exception:
     return fastapi.HTTPException(
         status_code=fastapi.status.HTTP_404_NOT_FOUND,
-        detail=http_404_id_details(id=id),
+        detail=f"Either the object with id `{id}` doesn't exist, has been deleted, or you are not authorized!",
     )
 
 

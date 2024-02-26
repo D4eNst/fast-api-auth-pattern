@@ -47,7 +47,7 @@ class ScopeInfo:
         self.__detail = detail
 
     @property
-    def scope_str(self) -> str:
+    def str(self) -> str:
         return self.__scope
 
     @property
@@ -59,11 +59,12 @@ class ScopeInfo:
         return self.__detail
 
     def __str__(self):
-        return self.scope_str
+        return self.str
 
 
 class Scopes:
-    VIEW_ACCOUNT_DETAILS = ScopeType("Просматривать данные вашего аккаунта")
+    VIEW_ACCOUNT_DETAILS = ScopeType("Доступ к данным вашего аккаунта")
+    USER_DEV = ScopeType("Доступ к инструментам разработчика")
 
     user_read_private = ScopeInfo(
         "user-read-private",
@@ -76,23 +77,36 @@ class Scopes:
         "Адрес электронной почты"
     )
 
+    user_dev_read = ScopeInfo(
+        "user-dev-read",
+        USER_DEV,
+        "Данные приложений"
+    )
+    user_dev_modify = ScopeInfo(
+        "user-dev-modify",
+        USER_DEV,
+        "Изменение приложений"
+    )
+
     @classmethod
-    def all_scopes(cls) -> list[ScopeInfo]:
+    def get_scopes(cls, scope_type: Optional[ScopeType] = None) -> list[ScopeInfo]:
+        """Return all scopes. If scope_type is passed, return scopes only for this type"""
         return [scope
                 for scope in vars(cls).values()
-                if isinstance(scope, ScopeInfo)]
+                if isinstance(scope, ScopeInfo) and (scope_type is None or scope.type == scope_type)]
 
     @classmethod
-    def all_scopes_strings(cls) -> list[str]:
-        return [scope.scope_str
+    def get_scopes_strings(cls, scope_type: Optional[ScopeType] = None) -> list[str]:
+        """Return all scopes in string. If scope_type is passed, return scopes only for this type"""
+        return [scope.str
                 for scope in vars(cls).values()
-                if isinstance(scope, ScopeInfo)]
+                if isinstance(scope, ScopeInfo) and (scope_type is None or scope.type == scope_type)]
 
-    @classmethod
-    def scopes_type(cls, scope_type: ScopeType) -> list[str]:
-        return [scope.scope_str
-                for scope in vars(cls).values()
-                if isinstance(scope, ScopeInfo) and scope.type == scope_type]
+    # @classmethod
+    # def all_scopes_strings(cls, scope_type: ScopeType) -> list[str]:
+    #     return [scope.str
+    #             for scope in vars(cls).values()
+    #             if isinstance(scope, ScopeInfo) and scope.type == scope_type]
 
     @classmethod
     def all_types(cls) -> list[ScopeType]:
@@ -103,5 +117,5 @@ class Scopes:
     @classmethod
     def in_string(cls, scope_type: Optional[ScopeType] = None) -> str:
         if scope_type is not None:
-            return " ".join(cls.scopes_type(scope_type))
-        return " ".join(cls.all_scopes_strings())
+            return " ".join(cls.get_scopes_strings(scope_type))
+        return " ".join(cls.get_scopes_strings())

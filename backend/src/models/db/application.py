@@ -29,6 +29,6 @@ class ApplicationUser(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement="auto")
     application_id: Mapped[int] = mapped_column(ForeignKey("application.id", ondelete="CASCADE"), nullable=False)
     fullname: Mapped[str] = mapped_column(String(64), default="", nullable=False)
-    email: Mapped[str] = mapped_column(String(length=64), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(length=64), nullable=False, unique=False)
 
     application: Mapped["Application"] = relationship(back_populates="allowed_users")

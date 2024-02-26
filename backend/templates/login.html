@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <title>Login Page</title>
     <link rel="stylesheet" href="/static/css/bootstrap.min.css">
@@ -103,7 +103,7 @@
                 const expiresUTCString = expirationDate.toUTCString();
                 const expiresUTCString2 = expirationDate2.toUTCString();
                 document.cookie = "access_token=" + accessToken + "; expires=" + expiresUTCString;
-                document.cookie = "refresh_token=" + refreshToken + "; expires=" + expiresUTCString2;
+                // document.cookie = "refresh_token=" + refreshToken + "; expires=" + expiresUTCString2;
 
                 let params = "{{next_url}}".replaceAll("amp;", "")
 

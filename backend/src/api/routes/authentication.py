@@ -20,6 +20,7 @@ from src.api.dependencies.repository import get_repository
 from src.api.dependencies.scopes import Scopes
 from src.api.dependencies.session import get_async_session
 from src.config.manager import settings
+from src.models.db.application import ApplicationUser
 from src.models.schemas.account import AccountInCreate, AccountDetail
 from src.models.schemas.jwt import Tokens, SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
@@ -59,7 +60,7 @@ async def authorize(
         return "INVALID_CLIENT: Invalid code challenge method"
     if scope:
         for sc in scope.split(" "):
-            if sc not in Scopes.all_scopes_strings():
+            if sc not in Scopes.get_scopes_strings():
                 return "INVALID_CLIENT: Scope invalid"
     if redirect_uri not in app.redirect_uris:
         return "INVALID_CLIENT: Invalid redirect_uri"
@@ -78,6 +79,14 @@ async def authorize(
         return fastapi.responses.RedirectResponse(
             '/api/login' + params,
             status_code=fastapi.status.HTTP_302_FOUND)
+
+    if app.mode == "dev":
+        allowed_user = False
+        for app_user in app.allowed_users:  # type: ApplicationUser
+            if app_user.email == user.email:
+                allowed_user = True
+        if not allowed_user:
+            return "INVALID_CLIENT: email not allowed"
 
     if response_type.lower().strip() == "token":
         tokens = await get_token_from_account(client_id=client_id, account=user, scope=scope, app_repo=app_repo)
@@ -144,11 +153,16 @@ async def get_tokens(
         )
     elif form_data.grant_type == AuthTypes.AUTHORIZATION_CODE_FLOW.value:
         client_id_for_code = client_id_headers if not form_data.code_verifier else client_id_body
+        client_secret_for_code = client_secret_headers
+
+        # SUPPORT OPENAPI AUTH CODE FLOW (it send client creds only in request body)
+        if client_id_for_code is None and client_secret_for_code is None and client_id_body and client_secret_body:
+            client_id_for_code, client_secret_for_code = client_id_body, client_secret_body
 
         tokens = await get_token_from_auth_code(
             request=request,
             client_id=client_id_for_code,
-            client_secret=client_secret_headers,
+            client_secret=client_secret_for_code,
             redirect_uri=form_data.redirect_uri,
             code=form_data.code,
             code_verifier=form_data.code_verifier,

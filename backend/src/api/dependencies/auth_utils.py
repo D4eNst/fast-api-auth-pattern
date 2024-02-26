@@ -79,7 +79,7 @@ oauth2_code_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl="/api/auth/authorize",
     tokenUrl="/api/auth/token",
     refreshUrl="/refresh",
-    scopes={scope.scope_str: scope.detail for scope in Scopes.all_scopes()},
+    scopes={scope.str: scope.detail for scope in Scopes.get_scopes()},
     auto_error=False,
 )
 

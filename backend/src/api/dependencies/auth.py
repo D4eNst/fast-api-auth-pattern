@@ -66,7 +66,7 @@ async def get_token_from_password_creds(
     access_token = jwt_generator.generate_access_token(
         db_account,
         AuthTypes.PASSWORD_CREDENTIALS_FLOW.value,
-        Scopes.all_scopes_strings()
+        Scopes.get_scopes_strings()
     )
 
     s_refresh_session = SRefreshSession(
@@ -90,7 +90,7 @@ async def get_token_from_password_creds(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.JWT_TOKEN_EXPIRATION_TIME_MIN * 60,
-        scope=" ".join(Scopes.all_scopes_strings())
+        scope=" ".join(Scopes.get_scopes_strings())
     )
     return tokens
 

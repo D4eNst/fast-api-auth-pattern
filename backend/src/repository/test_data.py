@@ -54,7 +54,7 @@ async def create_initial_test_data(connection: AsyncConnection) -> None:
             SRefreshSession(account=1, ua="ua", ip="111-22-3-44")
         ]
         for refresh_session in refresh_sessions:
-            await refresh_session_repo.create(data=refresh_session.model_dump(), commit_changes=False)
+            a = await refresh_session_repo.create(data=refresh_session.model_dump(), commit_changes=False)
 
         app_repo = ApplicationCRUDRepository(async_session=session)
         apps = [

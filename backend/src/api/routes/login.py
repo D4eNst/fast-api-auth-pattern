@@ -28,8 +28,8 @@ async def login_page(
 ):
     # TODO SAME REFRESH SESSION COOKIES
     ans_list_scopes = {scope_type.descr: [sc.detail
-                                          for sc in Scopes.all_scopes()
-                                          if sc.scope_str in (scope.split() if scope else [])]
+                                          for sc in Scopes.get_scopes(scope_type=scope_type)
+                                          if sc.str in (scope.split() if scope else [])]
                        for scope_type in Scopes.all_types()}
 
     ans_list_scopes[Scopes.VIEW_ACCOUNT_DETAILS.descr].append('Публичные данные аккаунта')

@@ -3,6 +3,7 @@ import typing
 import sqlalchemy
 from sqlalchemy import Update, Delete, ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
+# from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import functions
 
 from src.securities.hashing.password import pwd_generator
@@ -72,10 +73,12 @@ class BaseCRUDRepository(typing.Generic[T]):
 
         return result
 
-    async def patch_by_id(self, id: int, data_to_update: dict, commit_changes: bool = True) -> T:
-        to_update = data_to_update.copy()
-        update_account = await self.find_by_id(id=id)
+    async def patch_by_id(self, id: int, data_to_update: dict, commit_changes: bool = True, **filter_by) -> T:
+        update_account = await self.find_by_id(id=id, **filter_by)
+        if not update_account:
+            raise EntityDoesNotExist(f"Object with id `{id}` does not exist!")
 
+        to_update = data_to_update.copy()
         update_stmt: Update = (
             sqlalchemy
             .update(table=self.model)
@@ -100,17 +103,12 @@ class BaseCRUDRepository(typing.Generic[T]):
         for update_column in to_update:
             if hasattr(self.model, update_column):
                 update_value = to_update[update_column]
+                update_attr = getattr(self.model, update_column)
 
-                if update_value is not None:
+                if update_value is not None or update_attr.nullable:
                     update_stmt = update_stmt.values({
                         f"{update_column}": update_value
                     })
-                # if update_value is None and getattr(update_account, update_column):
-                #     update_value = getattr(update_account, update_column)
-
-                # update_stmt = update_stmt.values({
-                #     f"{update_column}": update_value
-                # })
             else:
                 raise Exception(f"No such column: {update_column} in {self.model.__tablename__}")
 
@@ -121,8 +119,8 @@ class BaseCRUDRepository(typing.Generic[T]):
 
         return update_account
 
-    async def delete_by_id(self, id: int, commit_changes: bool = True) -> str:
-        delete_obj = await self.find_by_id(id=id)
+    async def delete_by_id(self, id: int, commit_changes: bool = True, **filter_by) -> str:
+        delete_obj = await self.find_by_id(id=id, **filter_by)
 
         if not delete_obj:
             raise EntityDoesNotExist(f"Object with id `{id}` does not exist!")
