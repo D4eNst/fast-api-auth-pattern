@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.db.refresh_session import RefreshSession
+from src.repository.models.refresh_session import RefreshSession
 from src.repository.crud.base import BaseCRUDRepository
 
 

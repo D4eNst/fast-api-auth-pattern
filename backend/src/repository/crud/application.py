@@ -1,13 +1,11 @@
 import typing
 
 import sqlalchemy
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from src.models.db.application import Application, ApplicationUser
+from src.repository.models.application import Application
 from src.repository.crud.base import BaseCRUDRepository
-from src.securities.hashing.password import pwd_generator
-from src.utilities.exceptions.database import EntityDoesNotExist
+from src.repository.exceptions import EntityDoesNotExist
 
 
 class ApplicationCRUDRepository(BaseCRUDRepository[Application]):

@@ -1,11 +1,10 @@
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.db.account import Account
+from src.repository.models.account import Account
 from src.repository.crud.base import BaseCRUDRepository
-from src.securities.hashing.password import pwd_generator
-from src.securities.verifications.credentials import credential_verifier
-from src.utilities.exceptions.database import EntityAlreadyExists
+from src.securities.password import PasswordGenerator
+from src.repository.exceptions import EntityAlreadyExists
 
 
 class AccountCRUDRepository(BaseCRUDRepository[Account]):
@@ -18,9 +17,9 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
         password = data.pop("password")
         new_account = Account(**data)
 
-        new_account.set_hash_salt(hash_salt=pwd_generator.generate_salt)
+        new_account.set_hash_salt(hash_salt=PasswordGenerator.generate_salt())
         new_account.set_hashed_password(
-            hashed_password=pwd_generator.generate_hashed_password(
+            hashed_password=PasswordGenerator.generate_hashed_password(
                 hash_salt=new_account.hash_salt, new_password=password
             )
         )
@@ -32,13 +31,6 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
         return new_account
 
     async def find_by_email(self, email: str, **filter_by) -> Account:
-        # stmt = sqlalchemy.select(Account).where(Account.email == email)
-        # query = await self.async_session.execute(statement=stmt)
-        #
-        # if not query:
-        #     raise EntityDoesNotExist("Account with email `{email}` does not exist!")
-        #
-        # return query.scalar()  # type: ignore
         return await self.find_by_field(field_name="email", field_value=email, **filter_by)
 
     async def find_by_username(self, username: str, **filter_by) -> Account:
@@ -52,7 +44,7 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
         email_query = await self.async_session.execute(email_stmt)
         db_email = email_query.scalar()
 
-        if not credential_verifier.is_email_available(email=db_email):
+        if db_email is not None:
             raise EntityAlreadyExists(f"The email `{email}` is already registered!")  # type: ignore
 
         return True
@@ -62,6 +54,6 @@ class AccountCRUDRepository(BaseCRUDRepository[Account]):
         username_query = await self.async_session.execute(username_stmt)
         db_username = username_query.scalar()
 
-        if not credential_verifier.is_username_available(username=db_username):
+        if db_username is not None:
             raise EntityAlreadyExists(f"The username `{username}` is already registered!")  # type: ignore
         return True

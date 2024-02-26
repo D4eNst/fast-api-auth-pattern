@@ -20,17 +20,17 @@ from src.api.dependencies.repository import get_repository
 from src.api.dependencies.scopes import Scopes
 from src.api.dependencies.session import get_async_session
 from src.config.manager import settings
-from src.models.db.application import ApplicationUser
-from src.models.schemas.account import AccountInCreate, AccountDetail
-from src.models.schemas.jwt import Tokens, SRefreshSession
+from src.repository.models.application import ApplicationUser
+from src.schemas.account import AccountInCreate, AccountDetail
+from src.schemas.jwt import Tokens, SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
 from src.repository.database import redis_client
-from src.securities.authorizations.jwt import jwt_generator, AuthTypes
-from src.utilities.exceptions.database import EntityAlreadyExists
-from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request
-from src.utilities.exceptions.http.exc_401 import http_401_exc_bad_token_request, http_401_exc_expired_token_request
+from src.securities.jwt import JWTGenerator, AuthTypes
+from src.repository.exceptions import EntityAlreadyExists
+from src.api.http_exceptions.exc_400 import http_400_exc_bad_email_request, http_400_exc_bad_username_request
+from src.api.http_exceptions.exc_401 import http_401_exc_bad_token_request, http_401_exc_expired_token_request
 
 router = fastapi.APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -214,7 +214,7 @@ async def refresh_tokens(
 
     scope: str = refresh_session.scope
 
-    new_access_token = jwt_generator.generate_access_token(
+    new_access_token = JWTGenerator.generate_access_token(
         db_account,
         AuthTypes.AUTHORIZATION_CODE_FLOW.value,
         scope.split()

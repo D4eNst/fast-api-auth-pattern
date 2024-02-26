@@ -1,17 +1,16 @@
 from typing import Annotated
 
 import fastapi
-import pydantic
 from fastapi import Security
 
 from src.api.dependencies.auth import get_auth_user
 from src.api.dependencies.repository import get_repository
 from src.api.dependencies.scopes import Scopes
-from src.models.db.account import Account
-from src.models.schemas.account import AccountInUpdate, AccountDetail
+from src.repository.models.account import Account
+from src.schemas.account import AccountInUpdate, AccountDetail
 from src.repository.crud.account import AccountCRUDRepository
-from src.utilities.exceptions.database import EntityDoesNotExist
-from src.utilities.exceptions.http.exc_404 import (
+from src.repository.exceptions import EntityDoesNotExist
+from src.api.http_exceptions.exc_404 import (
     http_404_exc_id_not_found_request,
 )
 

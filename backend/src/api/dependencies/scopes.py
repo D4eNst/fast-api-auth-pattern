@@ -1,6 +1,6 @@
 from typing import Optional
 
-from src.models.db.account import RoleNames
+from src.repository.models.account import RoleNames
 
 
 class AccountScopes:
@@ -101,12 +101,6 @@ class Scopes:
         return [scope.str
                 for scope in vars(cls).values()
                 if isinstance(scope, ScopeInfo) and (scope_type is None or scope.type == scope_type)]
-
-    # @classmethod
-    # def all_scopes_strings(cls, scope_type: ScopeType) -> list[str]:
-    #     return [scope.str
-    #             for scope in vars(cls).values()
-    #             if isinstance(scope, ScopeInfo) and scope.type == scope_type]
 
     @classmethod
     def all_types(cls) -> list[ScopeType]:

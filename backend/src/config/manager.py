@@ -3,10 +3,7 @@ from functools import lru_cache
 import decouple
 
 from src.config.settings.base import BackendBaseSettings
-from src.config.settings.development import BackendDevSettings
-from src.config.settings.environment import Environment
-from src.config.settings.production import BackendProdSettings
-from src.config.settings.staging import BackendStageSettings
+from src.config.settings.mode import Environment, BackendDevSettings, BackendProdSettings, BackendStageSettings
 
 
 class BackendSettingsFactory:

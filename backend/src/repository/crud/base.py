@@ -3,11 +3,10 @@ import typing
 import sqlalchemy
 from sqlalchemy import Update, Delete, ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
-# from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import functions
 
-from src.securities.hashing.password import pwd_generator
-from src.utilities.exceptions.database import EntityDoesNotExist
+from src.securities.password import PasswordGenerator
+from src.repository.exceptions import EntityDoesNotExist
 
 T = typing.TypeVar("T")
 
@@ -93,10 +92,10 @@ class BaseCRUDRepository(typing.Generic[T]):
         if hasattr(self.model, "_hashed_password"):
             password: str | None = to_update.pop("password", None)
             if password is not None:
-                update_account.set_hash_salt(hash_salt=pwd_generator.generate_salt)  # type: ignore
+                update_account.set_hash_salt(hash_salt=PasswordGenerator.generate_salt())  # type: ignore
 
                 update_account.set_hashed_password(
-                    hashed_password=pwd_generator.generate_hashed_password(
+                    hashed_password=PasswordGenerator.generate_hashed_password(
                         hash_salt=update_account.hash_salt,
                         new_password=password))
 

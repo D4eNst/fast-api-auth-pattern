@@ -10,23 +10,23 @@ from src.api.dependencies.auth_utils import oauth2_client_scheme, oauth2_code_sc
 from src.api.dependencies.repository import get_repository
 from src.api.dependencies.scopes import Scopes
 from src.config.manager import settings
-from src.models.db.account import Account
-from src.models.schemas.jwt import SJwtToken, SRefreshSession, Tokens
+from src.repository.models.account import Account
+from src.schemas.jwt import SJwtToken, SRefreshSession, Tokens
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
 from src.repository.database import redis_client
-from src.securities.authorizations.jwt import jwt_generator, AuthTypes
-from src.securities.hashing.password import pwd_generator
-from src.utilities.exceptions.http.exc_400 import http_exc_400_credentials_bad_signin_request, \
+from src.securities.jwt import JWTGenerator, AuthTypes
+from src.securities.password import PasswordGenerator
+from src.api.http_exceptions.exc_400 import http_exc_400_credentials_bad_signin_request, \
     http_exc_400_client_credentials_bad_request, http_exc_400_req_body_bad_signin_request
-from src.utilities.exceptions.http.exc_401 import (
+from src.api.http_exceptions.exc_401 import (
     http_401_exc_bad_token_request,
     http_401_exc_expired_token_request,
     http_401_exc_not_enough_permissions,
     http_exc_401_unauthorized_request,
 )
-from src.utilities.exceptions.http.exc_403 import http_403_forbidden_inactive_user
+from src.api.http_exceptions.exc_403 import http_403_forbidden_inactive_user
 
 
 async def get_token_from_password_creds(
@@ -50,7 +50,7 @@ async def get_token_from_password_creds(
     if not db_account.is_active:
         raise http_403_forbidden_inactive_user()
 
-    is_correct_pwd = pwd_generator.is_password_authenticated(
+    is_correct_pwd = PasswordGenerator.is_password_authenticated(
         hash_salt=db_account.hash_salt,
         password=password,
         hashed_password=db_account.hashed_password
@@ -63,7 +63,7 @@ async def get_token_from_password_creds(
         if len(current_sessions) > 5 or session.ua == user_agent:
             await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
 
-    access_token = jwt_generator.generate_access_token(
+    access_token = JWTGenerator.generate_access_token(
         db_account,
         AuthTypes.PASSWORD_CREDENTIALS_FLOW.value,
         Scopes.get_scopes_strings()
@@ -109,7 +109,7 @@ async def get_token_from_client_creds(
         raise await http_exc_400_client_credentials_bad_request()
     user = await account_repo.find_by_id(app.user)
 
-    access_token = jwt_generator.generate_access_token(user, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, list())
+    access_token = JWTGenerator.generate_access_token(user, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, list())
     tokens = Tokens(
         access_token=access_token,
         refresh_token=None,
@@ -169,7 +169,7 @@ async def get_token_from_auth_code(
         if len(current_sessions) > 5 or session.ua == user_agent:
             await refresh_session_repo.delete_by_id(session.id, commit_changes=False)
 
-    access_token = jwt_generator.generate_access_token(
+    access_token = JWTGenerator.generate_access_token(
         sub=db_account,
         auth_type=AuthTypes.AUTHORIZATION_CODE_FLOW.value,
         scopes=scope.split()
@@ -206,7 +206,7 @@ async def get_token_from_account(
     if app is None:
         raise await http_exc_400_client_credentials_bad_request()
 
-    access_token = jwt_generator.generate_access_token(account, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, scope.split())
+    access_token = JWTGenerator.generate_access_token(account, AuthTypes.CLIENT_CREDENTIALS_FLOW.value, scope.split())
     tokens = Tokens(
         access_token=access_token,
         refresh_token=None,
@@ -225,7 +225,7 @@ async def get_token_payload(
     if token2 is None:
         raise await http_exc_401_unauthorized_request()
     try:
-        payload = jwt_generator.retrieve_data_from_token(token3)
+        payload = JWTGenerator.retrieve_data_from_token(token3)
     except ExpiredSignatureError:
         raise await http_401_exc_expired_token_request()
     except Exception as e:

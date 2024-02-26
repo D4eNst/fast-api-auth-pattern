@@ -1,16 +1,15 @@
 import loguru
 from sqlalchemy import inspect, MetaData, Table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
-from sqlalchemy.sql.functions import user
 
-from src.models.db.application import ApplicationUser
-from src.models.schemas.account import AccountInCreate
-from src.models.schemas.application import SApplication, SApplicationUser
-from src.models.schemas.jwt import SRefreshSession
+from src.repository.models.application import ApplicationUser
+from src.schemas.account import AccountInCreate
+from src.schemas.application import SApplication
+from src.schemas.jwt import SRefreshSession
 from src.repository.crud.account import AccountCRUDRepository
 from src.repository.crud.application import ApplicationCRUDRepository
 from src.repository.crud.refresh_session import RefreshCRUDRepository
-from src.repository.table import Base
+from src.repository.base import Base
 
 
 async def delete_tables(connection: AsyncConnection):
@@ -54,7 +53,7 @@ async def create_initial_test_data(connection: AsyncConnection) -> None:
             SRefreshSession(account=1, ua="ua", ip="111-22-3-44")
         ]
         for refresh_session in refresh_sessions:
-            a = await refresh_session_repo.create(data=refresh_session.model_dump(), commit_changes=False)
+            await refresh_session_repo.create(data=refresh_session.model_dump(), commit_changes=False)
 
         app_repo = ApplicationCRUDRepository(async_session=session)
         apps = [

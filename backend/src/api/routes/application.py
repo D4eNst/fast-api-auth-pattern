@@ -6,14 +6,14 @@ from fastapi import Security
 from src.api.dependencies.auth import get_auth_user
 from src.api.dependencies.repository import get_repository
 from src.api.dependencies.scopes import Scopes
-from src.models.db.account import Account
-from src.models.db.application import Application, ApplicationUser
-from src.models.schemas.application import SApplicationAns, SApplicationCreate, SApplication, SApplicationUpdate, \
+from src.repository.models.account import Account
+from src.repository.models.application import Application, ApplicationUser
+from src.schemas.application import SApplicationAns, SApplicationCreate, SApplication, SApplicationUpdate, \
     SApplicationUserCreate, SApplicationUserUpdate, SApplicationUser
 from src.repository.crud.application import ApplicationCRUDRepository
-from src.utilities.exceptions.database import EntityDoesNotExist
-from src.utilities.exceptions.http.exc_400 import http_400_exc_bad_email_request
-from src.utilities.exceptions.http.exc_404 import http_404_exc_id_not_found_request
+from src.repository.exceptions import EntityDoesNotExist
+from src.api.http_exceptions.exc_400 import http_400_exc_bad_email_request
+from src.api.http_exceptions.exc_404 import http_404_exc_id_not_found_request
 
 router = fastapi.APIRouter(prefix="/app", tags=["application"])
 

@@ -1,9 +1,8 @@
 from typing import Optional, Union, Annotated
-from typing import Optional, Union, Annotated
 
 from fastapi import HTTPException, Form
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
-from fastapi.security import OAuth2PasswordBearer, OAuth2AuthorizationCodeBearer, OAuth2, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2AuthorizationCodeBearer, OAuth2
 from fastapi.security.http import HTTPBasic
 from fastapi.security.utils import get_authorization_scheme_param
 from starlette.requests import Request

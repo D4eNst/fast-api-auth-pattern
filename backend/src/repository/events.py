@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.pool.base import _ConnectionRecord
 
 from src.config.manager import settings
-from src.config.settings.environment import Environment
+from src.config.settings.mode import Environment
+
 from src.repository.database import async_db
-from src.repository.table import Base
+from src.repository.base import Base
 from src.repository.test_data import update_bd_in_change, create_initial_test_data, delete_tables
 
 
